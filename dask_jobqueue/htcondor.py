@@ -16,7 +16,7 @@ class HTCondorJob(Job):
 
 %(job_header)s
 
-Environment = "%(quoted_environment)s"
+%(environment_def)s
 Arguments = "%(quoted_arguments)s"
 Executable = %(executable)s
 
@@ -62,12 +62,14 @@ Queue
         else:
             self.job_extra = job_extra
 
+        self.env_dict = None
         env_extra = base_class_kwargs.get("env_extra", None)
         if env_extra is None:
             env_extra = dask.config.get(
-                "jobqueue.%s.env-extra" % self.config_name, default=[]
+                "jobqueue.%s.env-extra" % self.config_name, default=None
             )
-        self.env_dict = self.env_lines_to_dict(env_extra)
+        if env_extra is not None:
+            self.env_dict = self.env_lines_to_dict(env_extra)
 
         self.job_header_dict = {
             "MY.DaskWorkerName": '"htcondor--$F(MY.JobId)--"',
@@ -135,14 +137,16 @@ Queue
     def job_script(self):
         """Construct a job submission script"""
         quoted_arguments = quote_arguments(["-c", self._command_template])
-        quoted_environment = quote_environment(self.env_dict)
+        environment_def = ""
+        if self.env_dict is not None:
+            environment_def = "Environment = " + quote_environment(self.env_dict)
         job_header_lines = "\n".join(
             "%s = %s" % (k, v) for k, v in self.job_header_dict.items()
         )
         return self._script_template % {
             "shebang": self.shebang,
             "job_header": job_header_lines,
-            "quoted_environment": quoted_environment,
+            "environment_def": environment_def,
             "quoted_arguments": quoted_arguments,
             "executable": self.executable,
         }
